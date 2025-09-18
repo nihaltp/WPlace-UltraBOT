@@ -98,6 +98,7 @@ const DB_DIR = path.resolve(process.cwd(), 'db');
 const ACCOUNTS_FILE = path.join(DB_DIR, 'accounts.json');
 const SETTINGS_FILE = path.join(DB_DIR, 'settings.json');
 const FAVORITES_FILE = path.join(DB_DIR, 'favorites.json');
+const COLOR_STATS_FILE = path.join(DB_DIR, 'colorStats.json');
 
 function ensureDb() {
   try { fs.mkdirSync(DB_DIR, { recursive: true }); } catch {}
@@ -109,6 +110,9 @@ function ensureDb() {
   }
   if (!fs.existsSync(FAVORITES_FILE)) {
     try { fs.writeFileSync(FAVORITES_FILE, JSON.stringify([], null, 2)); } catch {}
+  }
+  if (!fs.existsSync(COLOR_STATS_FILE)) {
+    try { fs.writeFileSync(COLOR_STATS_FILE, JSON.stringify({}, null, 2)); } catch {}
   }
 }
 
@@ -954,31 +958,36 @@ function startServer(port, host) {
           for (let i = 0; i < 32; i++) {
             if (bitmap & (1 << i)) owned.push(i + 32);
           }
-          const missing = [];
+          let missing = [];
           for (let i = 0; i < 32; i++) {
             if (!owned.includes(i + 32)) missing.push(i + 32);
           }
           
-          const price = 2000;
-          let droplets = Number(acct.droplets || 0);
-          const maxPurchases = Math.min(missing.length, Math.floor(droplets / price));
-          const productId = 100;
-          const qty = 1;
-          let total = 0;
-          
-          for (const colorId of missing) {
-            if (total >= maxPurchases) break;
-            try {
-              total++;
-              await purchaseColor(acct.token, productId, qty, colorId);
-              droplets -= price;
-              console.log('Purchased color', colorId, "for account", acct.name); // TODO: Remove
-            } catch (e) {
-              console.error('Purchase failed for', colorId, "for account", acct.name,"Error:", e); // TODO: Remove
+          if (missing.length === 0) {
+            acct.autobuy = "max";
+          } else {
+            const price = 2000;
+            let droplets = Number(acct.droplets || 0);
+            const maxPurchases = Math.min(missing.length, Math.floor(droplets / price));
+            const productId = 100;
+            const qty = 1;
+            let total = 0;
+            missing = getColorsSortedByRarity(missing);
+            for (const colorId of missing) {
+              if (total >= maxPurchases) break;
+              try {
+                total++;
+                await purchaseColor(acct.token, productId, qty, colorId);
+                droplets -= price;
+                console.log('Purchased color', colorId, "for account", acct.name); // TODO: Remove
+              } catch (e) {
+                console.error('Purchase failed for', colorId, "for account", acct.name,"Error:", e); // TODO: Remove
+              }
             }
           }
         }
         accounts[idx] = acct;
+        updateColorStats(accounts);
         writeJson(ACCOUNTS_FILE, accounts);
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify(acct));
@@ -1014,6 +1023,29 @@ function startServer(port, host) {
     console.log(`Listening on http://${host}:${port}`);
   });
 }
+
+function updateColorStats(accounts) {
+  const colorUsage = {};
+  for (const acct of accounts) {
+    const bitmap = acct.extraColorsBitmap || 0;
+    for (let i = 0; i < 32; i++) {
+      if (bitmap & (1 << i)) {
+        const colorId = i + 32;
+        colorUsage[colorId] = (colorUsage[colorId] || 0) + 1;
+      }
+    }
+  }
+  writeJson(COLOR_STATS_FILE, colorUsage);
+}
+
+function getColorsSortedByRarity(missing) {
+  const stats = readJson(COLOR_STATS_FILE, {});
+  const arr = missing.map((colorId) => {
+    const count = stats.hasOwnProperty(colorId) ? stats[colorId] : 0;
+    return { colorId, count };
+  });
+  arr.sort((a, b) => a.count - b.count);
+  return arr.map(x => x.colorId);}
 
 function main() {
   const args = process.argv.slice(2);

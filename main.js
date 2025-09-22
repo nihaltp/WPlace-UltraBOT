@@ -1031,7 +1031,7 @@ function updateColorStats(accounts) {
     for (let i = 0; i < 32; i++) {
       if (bitmap & (1 << i)) {
         const colorId = i + 32;
-        colorUsage[colorId] = (colorUsage[colorId] || 0) + 1;
+        colorUsage[colorId] = (colorUsage[colorId] || 0) + (acct.pixelMax || 0);
       }
     }
   }

@@ -6784,14 +6784,26 @@ function loadImage(area, no, preserveView = false) {
       }
       return added;
     }
+    let mode = 0;
+    function direction(h, w) {
+      const yDir = (mode & 1) === 0 ? 1 : -1;
+      const xDir = (mode & 2) === 0 ? 1 : -1;
+      mode = (mode + 1) & 3;
+      const yStart = yDir > 0 ? 0 : h - 1;
+      const yEnd   = yDir > 0 ? h : -1;
+      const xStart = xDir > 0 ? 0 : w - 1;
+      const xEnd   = xDir > 0 ? w : -1;
+      return { yDir, xDir, yStart, yEnd, xStart, xEnd };
+    }
     function autoSelectColorFirst(selItem, need){
       if (!selItem || !selItem.image) return 0;
       const w = selItem.image.naturalWidth|0;
       const h = selItem.image.naturalHeight|0;
       if (!(w && h)) return 0;
       const buckets = new Map();
-      for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
+      const { yDir, xDir, yStart, yEnd, xStart, xEnd } = direction(h, w);
+      for (let y = yStart; y !== yEnd; y += yDir) {
+        for (let x = xStart; x !== xEnd; x += xDir) {
           if (!isOpaquePixel(selItem, x, y)) continue;
           if (selectedOverrideColorId == null && isSamePaletteIdAsBase(selItem, x, y)) continue;
           const pid = (selectedOverrideColorId != null && selectedOverrideColorId !== 0)
